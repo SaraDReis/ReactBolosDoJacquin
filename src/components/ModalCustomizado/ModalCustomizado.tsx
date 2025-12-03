@@ -1,4 +1,4 @@
-import { Button, Modal } from 'react-bootstrap'
+import { Modal } from 'react-bootstrap'
 import './ModalCustomizado.css'
 import type { ModalCustomizadoProps } from '../../types/ModalCustumizadoProps'
 

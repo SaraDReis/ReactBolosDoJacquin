@@ -3,7 +3,7 @@ import Footer from '../../components/Footer/Footer'
 import Header from '../../components/Header/Header'
 import './Cadastro.css'
 import type { Bolo } from '../../types/Bolo';
-import { deleteBolo, getBolos } from '../../services/bolosService';
+import { deleteBolo, enviarFotoParaAPI, getBolos, postBolo } from '../../services/bolosService';
 import { formatosService } from '../../services/formatosService';
 import ModalCustomizado from '../../components/ModalCustomizado/ModalCustomizado';
 import { NumericFormat } from 'react-number-format';
@@ -17,13 +17,15 @@ export default function Cadastro() {
     const [idParaDeletar, setIdParaDeletar] = useState<string>("");
     const [AposConfirmacaoDeBoloRemovido, setAposConfirmacaoDeBoloRemovido] = useState<boolean>(false) //o valor em parenteses é o valor inicial, ou seja, ele começa com o valor falso
     const [propsModalDeErroOuSucesso, setPropsModalDeErroOuSucesso] = useState<{ exibir: boolean, titulo: string, corpo: string }>({ exibir: false, titulo: "", corpo: "" });
+
     const [nomeBolo, setNomeBolo] = useState<string>("");
     const [categorias, setCategorias] = useState<string>("");
     const [imagem, setImagem] = useState<File | undefined>(undefined);
     const [preco, setPreco] = useState<number | undefined>(undefined);
     const [peso, setPeso] = useState<number | undefined>(undefined);
     const [descricao, setDescricao] = useState<string>("");
-    const [ BgImageInputColor, setBgImageInputColor ] = useState<string>(" #ffffff")
+    //Função de cor de fundo do input tipo file (verde para arquivo correto, vermelho para arquivo incorreto)
+    const [BgImageInputColor, setBgImageInputColor] = useState<string>(" #ffffff")
 
 
     const abrirModalParaConfirmarDelete = (id: string) => {
@@ -42,7 +44,7 @@ export default function Cadastro() {
         setPropsModalDeErroOuSucesso({ ...propsModalDeErroOuSucesso, exibir: false }); //isso daq é equivalente a colcoar as informações(titulo, corpo etc) ele passa usando a prorpia função , esses "..." são chamados de spread operator(operador que espalha)
     }
 
-    const exibirModalDeErroSucesso = (titulo: string, corpo: string) => {
+    const exibirModalDeErroOuSucesso = (titulo: string, corpo: string) => {
         setPropsModalDeErroOuSucesso({ exibir: true, titulo, corpo })
     }
 
@@ -55,7 +57,7 @@ export default function Cadastro() {
 
 
         } catch (error) {
-            exibirModalDeErroSucesso("Erro", "Erro ao deletar o bolo");
+            exibirModalDeErroOuSucesso("Erro", "Erro ao deletar o bolo");
 
         }
 
@@ -72,18 +74,64 @@ export default function Cadastro() {
         }
     }
 
-const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
-    const file = img.target.files?.[0];
-    if (file?.type.includes("images")) {
-      setImagem(file);
-      setBgImageInputColor(" #5cb85c") ; 
-    }
-    else{
-        setImagem(undefined);
-        setBgImageInputColor(" #ff2c2c") ;
+    const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
+        const file = img.target.files?.[0];
+        if (file?.type.includes("images")) {
+            setImagem(file);
+            setBgImageInputColor(" #5cb85c");
+        }
+        else {
+            setImagem(undefined);
+            setBgImageInputColor(" #ff2c2c");
+        }
+
     }
 
-}
+    const limparDados = () => {
+        setNomeBolo("");
+        setCategorias("");
+        setImagem(undefined);
+        setPreco(undefined);
+        setPeso(undefined);
+        setDescricao("");
+        setBgImageInputColor(" #ffffff");
+    }
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!nomeBolo || !categorias || !preco) {
+            exibirModalDeErroOuSucesso("Campos obrigatorios", "Preencha o nome, categoria e preço do bolo")
+            return;
+        }
+        let uploadedFileName: string | undefined;
+        if (imagem) {
+            uploadedFileName = await enviarFotoParaAPI(imagem);
+            if (!uploadedFileName) {
+                exibirModalDeErroOuSucesso("Erro", "Cadastro cancelado por falha no upload da imagem.");
+                return;
+            }
+        }
+
+        const novoBolo: Bolo = {
+            id: undefined,
+            nome: nomeBolo,
+            descricao: descricao,
+            preco: preco,
+            peso: peso ?? null,
+            categorias: categorias.toLowerCase().split(",").map(c => c.trim()), //trim: remove espaços em branco
+            imagens: uploadedFileName ? [uploadedFileName] : [] //se esse nome existe, coloque puxand do uploadedFileName, Se NAO, deixe o array vazio
+        }
+        //para mandar um novo bolo para seu db json
+        try {
+            await postBolo(novoBolo);
+            exibirModalDeErroOuSucesso("sucesso", "Novo bolo cadastrado com sucesso!");
+            fetchBolos();
+            limparDados();
+        } catch (error) {
+            exibirModalDeErroOuSucesso("Erro", "Erro ao cadastrar o novo bolo");
+        }
+    }
 
     useEffect(() => {
         fetchBolos();
@@ -98,7 +146,7 @@ const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
             <main>
                 <h1 className="acessivel">tela de cadastro e listagem de produtos</h1>
 
-                <section className="container_cadastro">
+                <form className="container_cadastro">
                     <h2>Cadastro</h2>
                     <hr />
 
@@ -130,7 +178,7 @@ const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
                                 <div className="img">
                                     <label htmlFor="img">
                                         <span>Imagem</span>
-                                        <div>
+                                        <div style={{ backgroundColor: BgImageInputColor }} >
                                             <svg xmlns="http://www.w3.org/2000/svg"
                                                 viewBox="0 0 448 512">
                                                 <path fill="currentColor"
@@ -151,28 +199,28 @@ const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
                             <div className="valor_peso">
                                 <div className="valor">
                                     <label htmlFor="val">Valor</label>
-                                   <NumericFormat
-                                   id='val'
-                                   placeholder='insira o preço(R$)'
-                                   value={preco ?? ""}
-                                   thousandSeparator="."
-                                   decimalSeparator=','
-                                   prefix='R$ '
-                                   decimalScale={2}
-                                   fixedDecimalScale
-                                   allowNegative={false}
-                                   onValueChange={(values) => {
-                                    setPreco(values.floatValue ?? undefined);
-                                   }}
-                                   inputMode='decimal'
-                                   />
+                                    <NumericFormat
+                                        id='val'
+                                        placeholder='insira o preço(R$)'
+                                        value={preco ?? ""}
+                                        thousandSeparator="."
+                                        decimalSeparator=','
+                                        prefix='R$ '
+                                        decimalScale={2}
+                                        fixedDecimalScale
+                                        allowNegative={false}
+                                        onValueChange={(values) => {
+                                            setPreco(values.floatValue ?? undefined);
+                                        }}
+                                        inputMode='decimal'
+                                    />
                                 </div>
 
                                 <div className="peso">
                                     <label htmlFor="peso">Peso</label>
                                     <NumericFormat
                                         id="peso"
-                                        placeholder='Iserir'
+                                        placeholder='Inserir'
                                         value={peso ?? ""}
                                         thousandSeparator='.'
                                         decimalSeparator=','
@@ -181,9 +229,9 @@ const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
                                         allowNegative={false}
                                         suffix='kg'
                                         inputMode='decimal'
-                                        onValueChange={(values) =>{
+                                        onValueChange={(values) => {
                                             setPeso(values.floatValue ?? undefined);
-                                        } }
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -196,12 +244,12 @@ const carregarImagem = (img: ChangeEvent<HTMLInputElement>) => {
                                 maxLength={200}
                                 placeholder='Escreva detalhes sobre o bolo'
                                 value={descricao}
-                                onChange={d => setDescricao(d.target.value) }
+                                onChange={d => setDescricao(d.target.value)}
                             ></textarea>
                         </div>
                     </div>
-                  <button className='botaoSubmit' type='submit' >Cadastrar</button>
-                </section>
+                    <button onSubmit={handleSubmit} className='botaoSubmit' type='submit' >Cadastrar</button>
+                </form>
 
                 <section className="container_lista">
                     <h2>Lista</h2>
